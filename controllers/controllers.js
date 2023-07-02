@@ -1,6 +1,14 @@
 const expresHandler = require('express-async-handler')
 const prueba = require('../models/prueba')
 
+/*Reutilizables */
+var jwt = require('jsonwebtoken')
+const bcryptjs = require('bcryptjs');
+const { generateToken } = require('../utils/tokenManager');
+function valiarPassword(front, back) {
+    return bcryptjs.compare(front, back)
+}
+
 
 //Ver todos los productos disponibles
 const verPrueba = expresHandler(async (req, res) => {
@@ -14,21 +22,24 @@ const verPrueba = expresHandler(async (req, res) => {
 
 //Registrar usuarios e inicializar sus datos
 const guardarPrueba = expresHandler(async (req, res) => {
-    const { dueño, d_email, telefono, tarjeta, suscripcion, total_productos } = req.body
+    const { dueño, d_email, d_password, telefono, tarjeta, suscripcion, total_productos } = req.body
 
     const tableprueba = await prueba.insertMany({
         dueño,
         d_email,
+        d_password,
         telefono,
         tarjeta,
         suscripcion,
         total_productos
     })
+
     if (!tableprueba) {
         res.status(500).json({ error: "No found" })
     }
     res.status(200).json(tableprueba);
 })
+
 
 
 //Buscar usuario
@@ -67,7 +78,7 @@ const actualizarUsuario = expresHandler(async (req, res) => {
 //Registrar productos de usuario
 const registrarData = expresHandler(async (req, res) => {
     //destructurando
-    const { _id, nombre, precio, imagen, stock, f_Inicio, f_Final, descripcion } = req.body;
+    const { _id, nombre, precio, imagen, stock, f_Inicio, f_Final, descripcion, html, sku } = req.body;
     const tableprueba = await prueba.updateOne({ _id: _id }, {
         $push: {
             'productos': {
@@ -77,7 +88,9 @@ const registrarData = expresHandler(async (req, res) => {
                 stock,
                 f_Inicio,
                 f_Final,
-                descripcion
+                descripcion,
+                html,
+                sku
             }
         }
     })
@@ -90,7 +103,7 @@ const registrarData = expresHandler(async (req, res) => {
 //Actualizar los productos de usuario
 const actualizarProducto = expresHandler(async (req, res) => {
     try {
-        const { _id, productoId, nombre, precio, imagen, stock, f_Inicio, f_Final, descripcion } = req.body;
+        const { _id, productoId, nombre, precio, imagen, stock, f_Inicio, f_Final, descripcion, html, sku } = req.body;
 
         const documento = await prueba.findById(_id);
         if (!documento) {
@@ -116,6 +129,8 @@ const actualizarProducto = expresHandler(async (req, res) => {
         documento.productos[indiceProducto].f_Inicio = f_Inicio;
         documento.productos[indiceProducto].f_Final = f_Final;
         documento.productos[indiceProducto].descripcion = descripcion;
+        documento.productos[indiceProducto].html = html;
+        documento.productos[indiceProducto].sku = sku;
 
         // Guarda el documento actualizado en la base de datos
         await documento.save();
@@ -130,6 +145,8 @@ const actualizarProducto = expresHandler(async (req, res) => {
             f_Inicio: documento.productos[indiceProducto].f_Inicio,
             f_Final: documento.productos[indiceProducto].f_Final,
             descripcion: documento.productos[indiceProducto].descripcion,
+            descripcion: documento.productos[html].html,
+            descripcion: documento.productos[sku].sku,
         };
 
         res.status(200).json(productoActualizado);
@@ -201,29 +218,13 @@ const buscarProductos = expresHandler(async (req, res) => {
         res.status(500).json({ error: 'Error al buscar los productos' });
     }
 });
-/*const buscarProductos = expresHandler(async (req, res) => {
-    try {
-      const { _id } = req.body;
-  
-      const documento = await prueba.findById(_id);
-      if (!documento) {
-        return res.status(404).json({ error: 'Documento no encontrado' });
-      }
-  
-      const productos = documento.productos;
-  
-      res.status(200).json(productos);
-    } catch (error) {
-      console.log(error);
-      res.status(500).json({ error: 'Error al buscar los productos' });
-    }
-  });*/
+
 
 
 //Buscar un solo producto
 const buscarProducto = async (req, res) => {
     try {
-        const { _id, productoId } = req.body;
+        const { _id, productoId } = req.query;
 
         const documento = await prueba.findById(_id);
         if (!documento) {
@@ -249,7 +250,6 @@ const buscarProducto = async (req, res) => {
 
 
 //Registrar html de pagina del usario
-//Registrar productos de usuario
 const registrarHtml = expresHandler(async (req, res) => {
     //destructurando
     const { _id, paginahtml } = req.body;
@@ -268,7 +268,7 @@ const registrarHtml = expresHandler(async (req, res) => {
 
 
 //Buscar un solo paginaHtml
-const buscarPagina = async (req, res) => {
+/*const buscarPagina = async (req, res) => {
     try {
         const { _id, paginaId } = req.body;
 
@@ -290,6 +290,30 @@ const buscarPagina = async (req, res) => {
     } catch (error) {
         console.log(error);
         res.status(500).json({ error: 'Error al buscar pagina' });
+    }
+};*/
+
+// Buscar la primera páginaHtml
+const buscarPagina = async (req, res) => {
+    try {
+        const { _id } = req.body;
+
+        const documento = await prueba.findById(_id);
+        if (!documento) {
+            return res.status(404).json({ error: 'Documento no encontrado' });
+        }
+
+        // Obtener la primera página del arreglo de personalización
+        const primeraPagina = documento.personalizacion[0];
+
+        if (!primeraPagina) {
+            return res.status(404).json({ error: 'No se encontró ninguna página' });
+        }
+
+        res.status(200).json(primeraPagina);
+    } catch (error) {
+        console.log(error);
+        res.status(500).json({ error: 'Error al buscar la primera página' });
     }
 };
 
@@ -333,7 +357,7 @@ const actualizarPagina = expresHandler(async (req, res) => {
 //Registrar datos de PaginaReact del usuario
 const registrarPaginaReact = expresHandler(async (req, res) => {
     //destructurando
-    const { _id, titulo, banner, descripcion, color, logo, wasap } = req.body;
+    const { _id, titulo, banner, descripcion, color, logo, wasap, sub1, sub2, sub3, sub4 } = req.body;
     const tableprueba = await prueba.updateOne({ _id: _id }, {
         $push: {
             'pagina': {
@@ -342,7 +366,11 @@ const registrarPaginaReact = expresHandler(async (req, res) => {
                 descripcion,
                 color,
                 logo,
-                wasap
+                wasap,
+                sub1,
+                sub2,
+                sub3,
+                sub4,
             }
         }
     })
@@ -354,7 +382,7 @@ const registrarPaginaReact = expresHandler(async (req, res) => {
 
 
 //Buscar pagina unica REACT
-const buscarPaginaReact = async (req, res) => {
+/*const buscarPaginaReact = async (req, res) => {
     try {
         const { _id, paginaId } = req.query;
 
@@ -376,6 +404,29 @@ const buscarPaginaReact = async (req, res) => {
     } catch (error) {
         console.log(error);
         res.status(500).json({ error: 'Error al buscar página' });
+    }
+};*/
+
+const buscarPaginaReact = async (req, res) => {
+    try {
+        const { _id } = req.query;
+
+        const documento = await prueba.findById(_id);
+        if (!documento) {
+            return res.status(404).json({ error: 'Documento no encontrado' });
+        }
+
+        // Buscar la primera página
+        const primeraPaginaReact = documento.pagina[0];
+
+        if (!primeraPaginaReact) {
+            return res.status(404).json({ error: 'No se encontró ninguna página' });
+        }
+
+        res.status(200).json(primeraPaginaReact);
+    } catch (error) {
+        console.log(error);
+        res.status(500).json({ error: 'Error al buscar la página' });
     }
 };
 
@@ -414,7 +465,7 @@ const eliminarPaginaReact = expresHandler(async (req, res) => {
 //Actualizar pagina React del usuario 
 const actualizarPaginaReact = async (req, res) => {
     try {
-        const { _id, paginaId, titulo, banner, descripcion, color, logo, wasap } = req.body;
+        const { _id, paginaId, titulo, banner, descripcion, color, logo, wasap, sub1, sub2, sub3, sub4 } = req.body;
 
         const documento = await prueba.findById(_id);
         if (!documento) {
@@ -437,6 +488,10 @@ const actualizarPaginaReact = async (req, res) => {
         documento.pagina[indicePagina].color = color;
         documento.pagina[indicePagina].logo = logo;
         documento.pagina[indicePagina].wasap = wasap;
+        documento.pagina[indicePagina].sub1 = sub1;
+        documento.pagina[indicePagina].sub2 = sub2;
+        documento.pagina[indicePagina].sub3 = sub3;
+        documento.pagina[indicePagina].sub4 = sub4;
 
         // Guarda el documento actualizado en la base de datos
         const documentoActualizado = await documento.save();
@@ -502,7 +557,8 @@ const buscarClientes = expresHandler(async (req, res) => {
 //Registrar pedidos hechos a usuario
 const registrarPedido = expresHandler(async (req, res) => {
     //destructurando
-    const { _id, correo_cliente, nombre_producto, imagen_producto, precio_producto, direccion, cantidad, estado } = req.body;
+    const { _id, correo_cliente, nombre_producto, imagen_producto, precio_producto, direccion, cantidad, estado,
+        sku_p, postal, total, metodo_pago } = req.body;
     const tableprueba = await prueba.updateOne({ _id: _id }, {
         $push: {
             'pedidos': {
@@ -513,6 +569,10 @@ const registrarPedido = expresHandler(async (req, res) => {
                 direccion,
                 cantidad,
                 estado,
+                sku_p,
+                postal,
+                total,
+                metodo_pago,
             }
         }
     })
@@ -571,7 +631,8 @@ const buscarPedido = async (req, res) => {
 //Actualizar Pedido del usuario 
 const actualizarPedido = async (req, res) => {
     try {
-        const { _id, pedidoId, correo_cliente, nombre_producto, imagen_producto, precio_producto, direccion, cantidad, estado } = req.body;
+        const { _id, pedidoId, correo_cliente, nombre_producto, imagen_producto, precio_producto, direccion, cantidad, estado,
+            sku_p, postal, total, metodo_pago } = req.body;
 
         const documento = await prueba.findById(_id);
         if (!documento) {
@@ -596,6 +657,11 @@ const actualizarPedido = async (req, res) => {
         documento.pedidos[indicePedido].cantidad = cantidad;
         documento.pedidos[indicePedido].estado = estado;
 
+        documento.pedidos[indicePedido].sku_p = sku_p;
+        documento.pedidos[indicePedido].postal = postal;
+        documento.pedidos[indicePedido].total = total;
+        documento.pedidos[indicePedido].metodo_pago = metodo_pago;
+
         // Guarda el documento actualizado en la base de datos
         const documentoActualizado = await documento.save();
         // Selecciona solo los campos necesarios para la respuesta
@@ -603,7 +669,8 @@ const actualizarPedido = async (req, res) => {
             //_id: documentoActualizado._id,
             pedidos: documentoActualizado.pedidos[indicePedido],
         };
-        res.status(200).json(respuesta);
+        //res.status(200).json(respuesta);
+        res.status(200).json({ update: "actualizado" });
 
 
     } catch (error) {
@@ -613,6 +680,200 @@ const actualizarPedido = async (req, res) => {
 };
 
 
+/*------------------------------------Sesiones de logeo y registtros */
+
+
+
+const register = async (req, res) => {
+    // Destructurando
+    const { _id, correo, password, pais } = req.body;
+    try {
+        // Verificar si el correo electrónico ya está registrado
+        const correoExistente = await prueba.findOne({ "clientes.correo": correo });
+        if (correoExistente) {
+            return res.status(400).json({ error: "El correo electrónico ya existe" });
+        }
+
+        // Hashear la contraseña
+        const hashedPassword = await bcryptjs.hash(password, 10);
+
+        const tableprueba = await prueba.updateOne({ _id: _id },
+            {
+                $push: {
+                    clientes: {
+                        correo: correo,
+                        password: hashedPassword,
+                        pais: pais
+                    }
+                }
+            }
+        );
+
+        console.log(tableprueba)
+
+        if (!tableprueba) {
+            return res.status(500).json({ error: "Not found" });
+        }
+        // Consultar el documento actualizado para obtener el ID del último cliente registrado
+        const clienteRegistrado = await prueba.findOne({ _id: _id });
+        const idCliente = clienteRegistrado.clientes[clienteRegistrado.clientes.length - 1]._id;
+        const emailCliente = clienteRegistrado.clientes[clienteRegistrado.clientes.length - 1].correo;
+
+        // Generar token JWT utilizando el ID del cliente registrado
+        const { token, expiresIn } = generateToken(idCliente, emailCliente);
+
+        return res.status(200).json({ token, expiresIn });
+    } catch (error) {
+        console.log(error.code);
+        //return res.status(500).json({ error: "Error registering user" });
+    }
+};
+
+
+
+const login = async (req, res) => {
+    try {
+        // Destructurando
+        const { _id, correo, password } = req.body;
+
+        // Verificar si el correo electrónico existe
+        let documento = await prueba.findById(_id);
+        if (!documento) {
+            return res.status(403).json({ error: "Documento no econtrado" });
+        }
+
+
+        const xcliente = documento.clientes.find((cliente) => cliente.correo === correo);
+
+        if (!xcliente) {
+            return res.status(403).json({ error: "El usuario no existe" });
+        }
+
+        //Validamos 
+        const validacionp = await valiarPassword(password, xcliente.password)
+        if (!validacionp) {
+            return res.status(403).json({ error: "Contraseña incorrecta" });
+        }
+
+        //generar token JWT
+        const { token, expiresIn } = generateToken(xcliente._id, xcliente.correo)
+        return res.json({ token, expiresIn })
+        //return res.status(500).json(xcliente)
+    } catch (error) {
+        console.log(error)
+    }
+}
+
+const ejemplo = async (req, res) => {
+    try {
+        const { _id } = req.query;
+
+        const documento = await prueba.findById(_id);
+        console.log(req.uid)
+        if (!documento) {
+            return res.status(404).json({ error: 'Documento no encontrado' });
+        }
+
+
+        const clientex = documento.clientes.find(
+            (cliente) => cliente._id.toString() === req.uid
+        );
+
+        if (!clientex) {
+            return res.status(404).json({ error: 'Cliente no encontrado' });
+        }
+
+
+        res.status(200).json({ id: clientex._id });
+    } catch (error) {
+        console.log(error);
+        res.status(500).json({ error: 'Error al buscar pedido' });
+    }
+}
+
+
+//Registro e i nicio de sesion de clientes de Teamfy
+const registerUser = expresHandler(async (req, res) => {
+    const { dueño, d_email, d_password, telefono, tarjeta, suscripcion, total_productos,
+        titulo, banner, descripcion, color, logo, wasap, sub1, sub2, sub3, sub4
+    } = req.body
+    try {
+        // Verificar si el correo electrónico ya está registrado
+        const correoExistente = await prueba.findOne({ "d_email": d_email });
+        if (correoExistente) {
+            return res.status(400).json({ error: "El correo electrónico ya existe" });
+        }
+
+        // Hashear la contraseña
+        const hashedPassword = await bcryptjs.hash(d_password, 10);
+        const tableprueba = new prueba({
+            dueño,
+            d_email,
+            d_password: hashedPassword,
+            telefono,
+            tarjeta,
+            suscripcion,
+            total_productos,
+            pagina: {
+                titulo,
+                banner,
+                descripcion,
+                color,
+                logo,
+                wasap,
+                sub1,
+                sub2,
+                sub3,
+                sub4
+            }
+        })
+
+        if (!tableprueba) {
+            res.status(500).json({ error: "No found" })
+        }
+
+        const savedClient = await tableprueba.save();
+
+        // _id del cliente registrado
+        const clienteId = savedClient._id;
+        const cliented_email = savedClient.d_email;
+
+        // Generar token JWT utilizando el ID del cliente registrado
+        const { token, expiresIn } = generateToken(clienteId, cliented_email);
+        return res.status(200).json({ token, expiresIn });
+
+    } catch (error) {
+        console.log(error.code);
+    }
+
+})
+
+
+const loginUser = async (req, res) => {
+    try {
+        // Destructurando
+        const { d_email, d_password } = req.body;
+
+        // Verificar si el correo electrónico existe
+        let user = await prueba.findOne({ d_email });
+        if (!user) {
+            return res.status(403).json({ error: "No existe el usuario" });
+        }
+
+
+        //Validamos 
+        const validacionp = await valiarPassword(d_password, user.d_password)
+        if (!validacionp) {
+            return res.status(403).json({ error: "Contraseña incorrecta" });
+        }
+
+        //generar token JWT
+        const { token, expiresIn } = generateToken(user._id, user.d_email)
+        return res.json({ token, expiresIn })
+    } catch (error) {
+        console.log(error)
+    }
+}
 
 
 
@@ -644,6 +905,14 @@ module.exports = {
     buscarPedidos,
     buscarPedido,
     actualizarPedido,
+
+    login,
+    register,
+
+    ejemplo,
+
+    registerUser,
+    loginUser,
 
 
 }
