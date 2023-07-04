@@ -682,8 +682,6 @@ const actualizarPedido = async (req, res) => {
 
 /*------------------------------------Sesiones de logeo y registtros */
 
-
-
 const register = async (req, res) => {
     // Destructurando
     const { _id, correo, password, pais } = req.body;
